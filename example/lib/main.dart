@@ -6,7 +6,6 @@ import 'dart:io' show Platform;
 import 'package:flutter_live/flutter_live.dart' as flutter_live;
 import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
 import 'package:fijkplayer/fijkplayer.dart' as fijkplayer;
-import 'package:camera_with_rtmp/camera.dart' as camera;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'privacy.dart';
 
@@ -34,7 +33,6 @@ class _HomeState extends State<Home> {
   bool _isPublish = false;
   bool _isPublishing = false;
   // The controller for publisher.
-  camera.CameraController _cameraController = null;
 
   @override
   Widget build(BuildContext context) {
@@ -47,8 +45,7 @@ class _HomeState extends State<Home> {
       body: Container(
         child: ListView(children: [
           UrlInputDisplay(_urlController),
-          ControlDisplay(isUrlValid(), _onStartPlayOrPublish, _isPublish, _isPublishing, _onSwitchPublish),
-          CameraDisplay(_isPublish, _cameraController),
+          ControlDisplay(isUrlValid(), _onStartPlayOrPublish, _isPublish, _isPublishing),
           DemoUrlsDisplay(_url, _onUserSelectUrl, _isPublish),
           PlatformDisplay(_info),
         ]),
@@ -74,7 +71,6 @@ class _HomeState extends State<Home> {
   void dispose() {
     super.dispose();
     _urlController.dispose();
-    disposeCamera();
     print('Main state disposed');
   }
 
@@ -100,23 +96,6 @@ class _HomeState extends State<Home> {
     return _url != null && _url.contains('://');
   }
 
-  void disposeCamera() async {
-    if (_cameraController == null) {
-      return;
-    }
-    _isPublishing = false;
-    await _cameraController.stopVideoStreaming();
-    await _cameraController.dispose();
-    _cameraController = null;
-    print('Camera disposed, publish=$_isPublish, publishing=$_isPublishing');
-  }
-
-  void stopPublish() async {
-    await disposeCamera();
-    setState(() { });
-    print('Stop publish url=$_url, publishing=$_isPublishing, controller=${_cameraController?.value.isInitialized}');
-  }
-
   void _onStartPlayOrPublish(BuildContext context) async {
     if (!isUrlValid()) {
       print('Invalid url $_url');
@@ -134,51 +113,10 @@ class _HomeState extends State<Home> {
     }
 
     // For publisher, stop publishing.
-    if (_isPublishing) {
-      stopPublish();
-      return;
-    }
-
-    // For publisher, publishing RTMP streaming.
-    if (_url.startsWith('rtmp://')) {
-      stopPublish();
-
-      var cameras = await camera.availableCameras();
-      if (cameras.isEmpty) {
-        print('Error: No cameras');
-        return;
-      }
-
-      camera.CameraDescription desc = cameras[0];
-      for (var c in cameras) {
-        if (c.lensDirection == camera.CameraLensDirection.front) {
-          desc = c;
-          break;
-        }
-      }
-      print('Use camera ${desc.name} ${desc.lensDirection}');
-
-      _cameraController = camera.CameraController(desc, camera.ResolutionPreset.low);
-      _cameraController.addListener(() {
-        setState(() { print('got camera event'); });
-      });
-
-      await _cameraController.initialize();
-      print('Camera initialized ok');
-
-      await _cameraController.startVideoStreaming(_url, bitrate: 300 * 1000);
-      print('Start streaming to $_url');
-
-      setState(() { _isPublishing = true; });
-    }
+    
   }
 
-  void _onSwitchPublish(bool v) {
-    if (!v) {
-      stopPublish();
-    }
-    setState(() { _isPublish = v; });
-  }
+  
 }
 
 class UrlInputDisplay extends StatelessWidget {
@@ -288,8 +226,7 @@ class ControlDisplay extends StatelessWidget {
   final VoidCallback _onStartPlayOrPublish;
   final bool _isPubslish;
   final bool _isPublishing;
-  final ValueChanged<bool> _onSwitchPublish;
-  ControlDisplay(this._urlAvailable, this._onStartPlayOrPublish, this._isPubslish, this._isPublishing, this._onSwitchPublish);
+  ControlDisplay(this._urlAvailable, this._onStartPlayOrPublish, this._isPubslish, this._isPublishing);
 
   @override
   Widget build(BuildContext context) {
@@ -306,7 +243,6 @@ class ControlDisplay extends StatelessWidget {
         Row(
           children: [
             Text('Publish'),
-            Switch(value: _isPubslish, onChanged: _onSwitchPublish),
           ],
         ),
         Container(
@@ -321,33 +257,7 @@ class ControlDisplay extends StatelessWidget {
   }
 }
 
-class CameraDisplay extends StatelessWidget {
-  final bool _isPublish;
-  final camera.CameraController _cameraController;
-  CameraDisplay(this._isPublish, this._cameraController);
 
-  @override
-  Widget build(BuildContext context) {
-    if (!_isPublish) {
-      return Container();
-    }
-
-    if (_cameraController == null) {
-      return Container();
-    }
-
-    if (!_cameraController.value.isInitialized) {
-      return Container(child: Center(child: Text(
-        'Camera not available', style: TextStyle(color: Colors.red[500]),
-      )));
-    }
-
-    return AspectRatio(
-        aspectRatio: _cameraController.value.aspectRatio,
-        child: camera.CameraPreview(_cameraController)
-    );
-  }
-}
 
 class PlatformDisplay extends StatelessWidget {
   final PackageInfo _info;
